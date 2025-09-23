@@ -1,0 +1,5 @@
+[webservers]
+staging-web ansible_host=192.168.1.100 ansible_user=deploy
+
+[databases]
+staging-db ansible_host=192.168.1.101 ansible_user=deploy

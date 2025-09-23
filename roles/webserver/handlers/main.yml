@@ -96,6 +96,43 @@
   ignore_errors: true
   changed_when: false
 
+- name: restart nginx
+  # Handler spécifique pour Nginx
+  service:
+    name: nginx
+    state: restarted
+  when: webserver_service_name == "nginx"
+
+- name: reload nginx
+  # Recharge la configuration Nginx sans interruption
+  service:
+    name: nginx
+    state: reloaded
+  when: webserver_service_name == "nginx"
+
+- name: restart apache
+  # Handler spécifique pour Apache
+  service:
+    name: "{{ 'apache2' if ansible_os_family == 'Debian' else 'httpd' }}"
+    state: restarted
+  when: webserver_service_name in ["apache2", "httpd"]
+
+- name: enable site
+  # Active un site web (spécifique à Apache/Nginx)
+  command: "a2ensite {{ site_name | default('default') }}"
+  when: 
+    - ansible_os_family == "Debian"
+    - webserver_service_name == "apache2"
+  notify: reload webserver
+
+- name: disable site
+  # Désactive un site web
+  command: "a2dissite {{ site_name | default('default') }}"
+  when: 
+    - ansible_os_family == "Debian" 
+    - webserver_service_name == "apache2"
+  notify: reload webserver
+
 # === HANDLERS DE MONITORING ===
 
 - name: display restart status

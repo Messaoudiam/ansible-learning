@@ -1,0 +1,18 @@
+---
+# Variables spécifiques aux serveurs web
+nginx_version: "latest"
+nginx_port: 80
+ssl_port: 443
+document_root: "/var/www/html"
+
+# Configuration de sécurité
+firewall_enabled: true
+allowed_ports:
+  - 22
+  - 80
+  - 443
+
+# Logs
+log_level: "info"
+access_log: "/var/log/nginx/access.log"
+error_log: "/var/log/nginx/error.log"

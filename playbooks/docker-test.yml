@@ -63,7 +63,7 @@
     
     - name: "Créer un inventaire Docker"
       copy:
-        dest: "{{ playbook_dir }}/inventory-docker"
+        dest: "{{ playbook_dir }}/../inventories/docker"
         content: |
           # Inventaire pour tests Docker
           [ubuntu]
@@ -88,8 +88,8 @@
           CentOS: ssh ansible@localhost -p 2223 (mot de passe: ansible)
           
           Pour tester Ansible:
-          1. ansible -i inventory-docker docker -m ping
-          2. ansible-playbook -i inventory-docker site.yml
+          1. ansible -i inventories/docker docker -m ping
+          2. ansible-playbook -i inventories/docker playbooks/site.yml
           
           Pour nettoyer:
           docker stop ubuntu-ansible-test centos-ansible-test
