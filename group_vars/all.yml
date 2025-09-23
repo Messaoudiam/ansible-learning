@@ -1,0 +1,106 @@
+---
+# Variables globales pour tous les serveurs
+# Ce fichier contient les variables qui s'appliquent à TOUS les serveurs de l'inventaire
+# Ces variables peuvent être surchargées par des variables plus spécifiques
+
+# === CONFIGURATION DE BASE ===
+
+# Utilisateur système pour le déploiement
+# Cet utilisateur doit exister sur tous les serveurs cibles
+deploy_user: "{{ ansible_user | default('ansible') }}"
+
+# Répertoire home de l'utilisateur de déploiement
+deploy_home: "/home/{{ deploy_user }}"
+
+# === CONFIGURATION SSH ===
+
+# Port SSH par défaut
+# Peut être surchargé dans l'inventaire pour des serveurs spécifiques
+ssh_port: 22
+
+# Timeout pour les opérations Ansible (en secondes)
+ansible_timeout: 300
+
+# === CONFIGURATION APPLICATION ===
+
+# Nom de l'application (utilisé dans les templates et la configuration)
+app_name: "mon-premier-projet-ansible"
+
+# Version de l'application
+app_version: "1.0.0"
+
+# Variables personnelles pour l'apprentissage
+mon_nom: "Étudiant Ansible"
+ma_societe: "École DevOps"
+message_personnel: "Je maîtrise Ansible étape par étape !"
+
+# Environnement de déploiement  
+# Peut être: development, staging, production
+# Note: 'environment' est un nom réservé, on utilise 'env_name'
+env_name: "development"
+
+# === CONFIGURATION WEB ===
+
+# Port HTTP par défaut
+# Peut être surchargé par les variables de groupe ou d'hôte
+default_http_port: 80
+
+# Port HTTPS par défaut
+default_https_port: 443
+
+# Nom de domaine par défaut
+# Utilisé dans les configurations de serveur web
+default_domain: "localhost"
+
+# === CONFIGURATION SYSTÈME ===
+
+# Fuseau horaire par défaut
+timezone: "Europe/Paris"
+
+# Locale système par défaut
+locale: "fr_FR.UTF-8"
+
+# === CHEMINS SYSTÈME ===
+
+# Répertoire de logs par défaut
+log_directory: "/var/log/{{ app_name }}"
+
+# Répertoire de configuration par défaut
+config_directory: "/etc/{{ app_name }}"
+
+# Répertoire des données applicatives
+data_directory: "/var/lib/{{ app_name }}"
+
+# === CONFIGURATION SÉCURITÉ ===
+
+# Activer ou désactiver le firewall (pour l'apprentissage)
+enable_firewall: false
+
+# Activer ou désactiver SELinux (pour l'apprentissage)
+enable_selinux: false
+
+# === VARIABLES DE DÉMONSTRATION ===
+
+# Ces variables montrent comment utiliser différents types de données
+
+# Chaîne de caractères simple
+demo_string: "Ceci est une démonstration Ansible"
+
+# Liste simple
+demo_list:
+  - "premier élément"
+  - "deuxième élément"
+  - "troisième élément"
+
+# Dictionnaire (clé-valeur)
+demo_dict:
+  cle1: "valeur1"
+  cle2: "valeur2"
+  nombre: 42
+  booleen: true
+
+# Variable booléenne
+demo_feature_enabled: true
+
+# Variable numérique
+demo_max_connections: 100

@@ -1,0 +1,129 @@
+---
+# Variables par défaut pour le rôle webserver
+# Ce fichier contient les variables avec la PLUS BASSE priorité dans la hiérarchie Ansible
+# Ces valeurs peuvent être surchargées par group_vars/, host_vars/, vars/ ou la ligne de commande
+
+# === CONFIGURATION DU SERVEUR WEB ===
+
+# Nom du service web (varie selon la distribution)
+# Ubuntu/Debian: apache2, CentOS/RHEL: httpd
+webserver_service_name: "{% if ansible_os_family == 'Debian' %}apache2{% else %}httpd{% endif %}"
+
+# Nom du package à installer
+webserver_package_name: "{% if ansible_os_family == 'Debian' %}apache2{% else %}httpd{% endif %}"
+
+# Port d'écoute du serveur web
+webserver_port: 80
+
+# Utilisateur propriétaire des fichiers web
+webserver_user: "{% if ansible_os_family == 'Debian' %}www-data{% else %}apache{% endif %}"
+
+# Groupe propriétaire des fichiers web  
+webserver_group: "{% if ansible_os_family == 'Debian' %}www-data{% else %}apache{% endif %}"
+
+# === CHEMINS ET RÉPERTOIRES ===
+
+# Répertoire racine du site web (DocumentRoot)
+webserver_document_root: "{% if ansible_os_family == 'Debian' %}/var/www/html{% else %}/var/www/html{% endif %}"
+
+# Répertoire de configuration
+webserver_config_dir: "{% if ansible_os_family == 'Debian' %}/etc/apache2{% else %}/etc/httpd{% endif %}"
+
+# Répertoire des logs
+webserver_log_dir: "{% if ansible_os_family == 'Debian' %}/var/log/apache2{% else %}/var/log/httpd{% endif %}"
+
+# === CONFIGURATION DU SITE ===
+
+# Nom du site (utilisé pour les configurations et logs)
+webserver_site_name: "{{ app_name | default('ansible-learning') }}"
+
+# Nom de domaine du site
+webserver_server_name: "{{ default_domain | default('localhost') }}"
+
+# Activer ou non les modules Apache
+webserver_modules_enabled:
+  - rewrite
+  - ssl
+
+# === CONFIGURATION SÉCURITÉ ===
+
+# Masquer la version du serveur web
+webserver_hide_version: true
+
+# Désactiver l'affichage des répertoires
+webserver_disable_indexes: true
+
+# Timeout pour les connexions (en secondes)
+webserver_timeout: 300
+
+# === CONFIGURATION PERFORMANCE ===
+
+# Nombre maximum de workers/processus
+webserver_max_workers: 150
+
+# Limite de taille pour les uploads (en MB)
+webserver_max_upload_size: 50
+
+# === CONFIGURATION SSL (HTTPS) ===
+
+# Activer HTTPS
+webserver_ssl_enabled: false
+
+# Port HTTPS
+webserver_ssl_port: 443
+
+# Chemins des certificats SSL
+webserver_ssl_cert_path: "/etc/ssl/certs/{{ webserver_site_name }}.crt"
+webserver_ssl_key_path: "/etc/ssl/private/{{ webserver_site_name }}.key"
+
+# === CONTENU DE LA PAGE D'ACCUEIL ===
+
+# Titre de la page d'accueil
+webserver_homepage_title: "Bienvenue sur {{ webserver_site_name }}"
+
+# Message d'accueil personnalisable
+webserver_homepage_message: |
+  Félicitations ! Votre serveur web Ansible est opérationnel.
+  
+  Ce serveur a été configuré automatiquement avec Ansible.
+  Vous pouvez maintenant personnaliser cette page selon vos besoins.
+
+# Couleur de thème pour la page d'accueil
+webserver_theme_color: "#3498db"
+
+# === PACKAGES ADDITIONNELS ===
+
+# Liste des packages supplémentaires à installer
+webserver_additional_packages:
+  - curl
+  - wget
+
+# === CONFIGURATION FIREWALL ===
+
+# Ouvrir automatiquement les ports dans le firewall
+webserver_configure_firewall: "{{ enable_firewall | default(false) }}"
+
+# Ports à ouvrir dans le firewall
+webserver_firewall_ports:
+  - "{{ webserver_port }}/tcp"
+  - "{{ webserver_ssl_port }}/tcp"
+
+# === VARIABLES DE DÉMONSTRATION ===
+
+# Ces variables montrent comment utiliser différents types dans les rôles
+
+# Variable booléenne
+webserver_demo_feature: true
+
+# Liste de modules optionnels
+webserver_optional_modules:
+  - mod_expires
+  - mod_headers
+  - mod_deflate
+
+# Configuration sous forme de dictionnaire
+webserver_optimization_config:
+  enable_compression: true
+  enable_caching: true
+  cache_duration: 3600
+  compression_level: 6

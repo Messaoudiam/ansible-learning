@@ -1,0 +1,96 @@
+---
+# Playbook pour tester Ansible avec des containers Docker
+# Simule différents OS Linux depuis macOS
+
+- name: "Test Ansible avec containers Docker"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+  
+  vars:
+    containers:
+      - name: ubuntu-ansible-test
+        image: ubuntu:22.04
+        port: 2222
+      - name: centos-ansible-test  
+        image: centos:stream8
+        port: 2223
+  
+  tasks:
+    - name: "Vérifier que Docker est installé"
+      command: docker --version
+      register: docker_check
+      failed_when: docker_check.rc != 0
+      changed_when: false
+      
+    - name: "Afficher la version Docker"
+      debug:
+        msg: "{{ docker_check.stdout }}"
+    
+    - name: "Créer les containers de test"
+      docker_container:
+        name: "{{ item.name }}"
+        image: "{{ item.image }}"
+        state: started
+        ports:
+          - "{{ item.port }}:22"
+        command: sleep infinity
+        restart_policy: unless-stopped
+      loop: "{{ containers }}"
+      ignore_errors: true
+    
+    - name: "Installer SSH et Python dans Ubuntu"
+      command: >
+        docker exec {{ containers[0].name }} 
+        bash -c "apt update && apt install -y openssh-server python3 sudo && 
+        useradd -m -s /bin/bash ansible && 
+        echo 'ansible:ansible' | chpasswd &&
+        echo 'ansible ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers &&
+        service ssh start"
+      ignore_errors: true
+      
+    - name: "Installer SSH et Python dans CentOS"
+      command: >
+        docker exec {{ containers[1].name }}
+        bash -c "yum install -y openssh-server python3 sudo &&
+        useradd -m -s /bin/bash ansible &&
+        echo 'ansible:ansible' | chpasswd &&
+        echo 'ansible ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers &&
+        ssh-keygen -A &&
+        /usr/sbin/sshd"
+      ignore_errors: true
+    
+    - name: "Créer un inventaire Docker"
+      copy:
+        dest: "{{ playbook_dir }}/inventory-docker"
+        content: |
+          # Inventaire pour tests Docker
+          [ubuntu]
+          ubuntu-docker ansible_host=127.0.0.1 ansible_port=2222 ansible_user=ansible ansible_ssh_pass=ansible
+          
+          [centos]
+          centos-docker ansible_host=127.0.0.1 ansible_port=2223 ansible_user=ansible ansible_ssh_pass=ansible
+          
+          [docker:children]
+          ubuntu
+          centos
+          
+          [all:vars]
+          ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
+    
+    - name: "Instructions pour tester"
+      debug:
+        msg: |
+          === CONTAINERS DOCKER CRÉÉS ===
+          
+          Ubuntu: ssh ansible@localhost -p 2222 (mot de passe: ansible)
+          CentOS: ssh ansible@localhost -p 2223 (mot de passe: ansible)
+          
+          Pour tester Ansible:
+          1. ansible -i inventory-docker docker -m ping
+          2. ansible-playbook -i inventory-docker site.yml
+          
+          Pour nettoyer:
+          docker stop ubuntu-ansible-test centos-ansible-test
+          docker rm ubuntu-ansible-test centos-ansible-test

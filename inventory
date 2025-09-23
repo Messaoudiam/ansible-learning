@@ -1,0 +1,43 @@
+# Inventaire Ansible pour l'apprentissage
+# L'inventaire définit les serveurs sur lesquels Ansible va travailler
+
+# Groupe 'webservers' - contient tous les serveurs web
+# Les groupes permettent d'organiser et de cibler des ensembles de serveurs
+[webservers]
+# Pour débuter, on utilise localhost avec différentes méthodes de connexion
+# Cela permet de tester sans avoir de vrais serveurs distants
+
+# Connexion locale directe (pas de SSH)
+localhost ansible_connection=local
+
+# Exemples de serveurs distants (commentés pour l'apprentissage)
+# Décommentez et modifiez ces lignes quand vous aurez de vrais serveurs
+# web1.example.com ansible_host=192.168.1.10 ansible_user=ubuntu
+# web2.example.com ansible_host=192.168.1.11 ansible_user=ubuntu ansible_port=2222
+# web3.example.com ansible_host=192.168.1.12
+
+# Groupe 'databases' - exemple d'un autre groupe
+# Montrer comment organiser différents types de serveurs
+[databases]
+# db1.example.com ansible_host=192.168.1.20
+# db2.example.com ansible_host=192.168.1.21
+
+# Méta-groupes : groupes qui contiennent d'autres groupes
+# Le groupe 'production' contient tous les serveurs de production
+[production:children]
+webservers
+databases
+
+# Variables spécifiques à des serveurs individuels
+# Ces variables surchargent les variables de groupe
+[webservers:vars]
+# Port HTTP par défaut pour tous les serveurs web
+http_port=80
+# Utilisateur propriétaire des fichiers web
+web_user=www-data
+
+# Variables pour tous les serveurs (toutes les machines de l'inventaire)
+# Ces variables peuvent être surchargées par des variables plus spécifiques
+[all:vars]
+# Timeout pour les connexions
+ansible_ssh_common_args='-o StrictHostKeyChecking=no'

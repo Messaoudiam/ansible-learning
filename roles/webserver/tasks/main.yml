@@ -1,0 +1,214 @@
+---
+# Tâches principales du rôle webserver
+# Ce fichier contient toutes les tâches nécessaires pour installer et configurer un serveur web
+
+# === VÉRIFICATIONS PRÉLIMINAIRES ===
+
+- name: "Afficher les informations de déploiement"
+  debug:
+    msg: |
+      === CONFIGURATION DU SERVEUR WEB ===
+      Serveur: {{ inventory_hostname }}
+      OS: {{ ansible_os_family }} {{ ansible_distribution }} {{ ansible_distribution_version }}
+      Package: {{ webserver_package_name }}
+      Service: {{ webserver_service_name }}
+      Port: {{ webserver_port }}
+      Document Root: {{ webserver_document_root }}
+  tags: [info]
+
+- name: "Vérifier que le système est supporté"
+  fail:
+    msg: "Ce rôle supporte uniquement Ubuntu/Debian et CentOS/RHEL. OS détecté: {{ ansible_os_family }}"
+  when: ansible_os_family not in ['Debian', 'RedHat']
+  tags: [validation]
+
+# === INSTALLATION DU SERVEUR WEB ===
+
+- name: "Installer le serveur web Apache (Debian/Ubuntu)"
+  apt:
+    name: "{{ webserver_package_name }}"
+    state: present
+    update_cache: true
+  when: ansible_os_family == "Debian"
+  notify: restart webserver
+  tags: [install, packages]
+
+- name: "Installer le serveur web Apache (RedHat/CentOS)"
+  yum:
+    name: "{{ webserver_package_name }}"
+    state: present
+  when: ansible_os_family == "RedHat"
+  notify: restart webserver
+  tags: [install, packages]
+
+- name: "Installer les packages additionnels"
+  package:
+    name: "{{ webserver_additional_packages }}"
+    state: present
+  tags: [install, packages]
+
+# === CONFIGURATION DES RÉPERTOIRES ===
+
+- name: "Créer le répertoire DocumentRoot"
+  file:
+    path: "{{ webserver_document_root }}"
+    state: directory
+    owner: "{{ webserver_user }}"
+    group: "{{ webserver_group }}"
+    mode: '0755'
+  tags: [config, directories]
+
+- name: "Créer le répertoire de logs personnalisé"
+  file:
+    path: "{{ webserver_log_dir }}/{{ webserver_site_name }}"
+    state: directory
+    owner: "{{ webserver_user }}"
+    group: "{{ webserver_group }}"
+    mode: '0755'
+  tags: [config, directories]
+
+# === GÉNÉRATION DU CONTENU WEB ===
+
+- name: "Générer la page d'accueil depuis le template"
+  template:
+    src: index.html.j2
+    dest: "{{ webserver_document_root }}/index.html"
+    owner: "{{ webserver_user }}"
+    group: "{{ webserver_group }}"
+    mode: '0644'
+    backup: true  # Crée une sauvegarde si le fichier existe déjà
+  notify: reload webserver
+  tags: [config, content]
+
+- name: "Créer une page d'information système"
+  copy:
+    dest: "{{ webserver_document_root }}/info.html"
+    owner: "{{ webserver_user }}"
+    group: "{{ webserver_group }}"
+    mode: '0644'
+    content: |
+      <!DOCTYPE html>
+      <html>
+      <head>
+          <title>Informations Système</title>
+          <style>
+              body { font-family: Arial, sans-serif; margin: 40px; }
+              .info { background: #f4f4f4; padding: 20px; border-radius: 5px; }
+          </style>
+      </head>
+      <body>
+          <h1>Informations Système</h1>
+          <div class="info">
+              <h2>Serveur: {{ inventory_hostname }}</h2>
+              <p><strong>Adresse IP:</strong> {{ ansible_default_ipv4.address | default('N/A') }}</p>
+              <p><strong>Système:</strong> {{ ansible_os_family }} {{ ansible_distribution }} {{ ansible_distribution_version }}</p>
+              <p><strong>Architecture:</strong> {{ ansible_architecture }}</p>
+              <p><strong>Processeur:</strong> {{ ansible_processor[2] | default('N/A') }}</p>
+              <p><strong>Mémoire:</strong> {{ ansible_memtotal_mb | default('N/A') }} MB</p>
+              <p><strong>Déploiement:</strong> {{ ansible_date_time.iso8601 }}</p>
+          </div>
+          <p><a href="/">&larr; Retour à l'accueil</a></p>
+      </body>
+      </html>
+  tags: [config, content]
+
+# === CONFIGURATION DU SERVICE ===
+
+- name: "Démarrer et activer le service web"
+  service:
+    name: "{{ webserver_service_name }}"
+    state: started
+    enabled: true
+  tags: [service]
+
+- name: "Vérifier que le service est démarré"
+  service:
+    name: "{{ webserver_service_name }}"
+    state: started
+  register: service_status
+  tags: [validation, service]
+
+- name: "Afficher le statut du service"
+  debug:
+    msg: |
+      Service {{ webserver_service_name }}: {{ service_status.state | default('inconnu') }}
+      {% if service_status.state == 'started' %}
+      ✅ Le service est démarré correctement
+      {% else %}
+      ❌ Problème avec le service
+      {% endif %}
+  tags: [info, validation]
+
+# === CONFIGURATION FIREWALL (OPTIONNEL) ===
+
+- name: "Ouvrir les ports du firewall (si activé)"
+  firewalld:
+    port: "{{ item }}"
+    permanent: true
+    state: enabled
+    immediate: true
+  loop: "{{ webserver_firewall_ports }}"
+  when: 
+    - webserver_configure_firewall | bool
+    - ansible_os_family == "RedHat"
+  ignore_errors: true  # Continue même si firewalld n'est pas installé
+  tags: [firewall, security]
+
+- name: "Ouvrir les ports UFW (Ubuntu/Debian)"
+  ufw:
+    rule: allow
+    port: "{{ item.split('/')[0] }}"
+    proto: "{{ item.split('/')[1] }}"
+  loop: "{{ webserver_firewall_ports }}"
+  when: 
+    - webserver_configure_firewall | bool
+    - ansible_os_family == "Debian"
+  ignore_errors: true  # Continue même si ufw n'est pas installé
+  tags: [firewall, security]
+
+# === VALIDATION FINALE ===
+
+- name: "Vérifier que le port est en écoute"
+  wait_for:
+    port: "{{ webserver_port }}"
+    host: "{{ ansible_default_ipv4.address | default('127.0.0.1') }}"
+    delay: 2
+    timeout: 30
+  tags: [validation, connectivity]
+
+- name: "Tester la page d'accueil en local"
+  uri:
+    url: "http://127.0.0.1:{{ webserver_port }}"
+    method: GET
+    status_code: 200
+  register: homepage_test
+  ignore_errors: true
+  tags: [validation, http]
+
+- name: "Afficher le résultat des tests"
+  debug:
+    msg: |
+      === RÉSULTATS DE LA VALIDATION ===
+      
+      {% if homepage_test.status == 200 %}
+      ✅ Le serveur web répond correctement
+      📱 Page d'accueil accessible sur: http://{{ ansible_default_ipv4.address | default('localhost') }}:{{ webserver_port }}
+      📊 Page d'info système: http://{{ ansible_default_ipv4.address | default('localhost') }}:{{ webserver_port }}/info.html
+      {% else %}
+      ❌ Problème détecté: {{ homepage_test.msg | default('Erreur inconnue') }}
+      {% endif %}
+      
+      🔧 Pour déboguer:
+        - Logs du service: sudo journalctl -u {{ webserver_service_name }}
+        - Statut du service: sudo systemctl status {{ webserver_service_name }}
+        - Test manuel: curl http://localhost:{{ webserver_port }}
+  tags: [info, validation]
+
+# === TÂCHES DE NETTOYAGE ===
+
+- name: "Supprimer la page par défaut d'Apache (si elle existe)"
+  file:
+    path: "{{ webserver_document_root }}/index.html"
+    state: absent
+  when: false  # Désactivé par défaut, peut être activé si nécessaire
+  tags: [cleanup]

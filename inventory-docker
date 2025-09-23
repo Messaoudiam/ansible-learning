@@ -1,0 +1,83 @@
+# Inventaire Ansible pour containers Docker
+# Test multi-OS : Ubuntu et CentOS/Rocky Linux
+
+# ======================================
+# GROUPES PAR DISTRIBUTION
+# ======================================
+
+[ubuntu]
+# Container Ubuntu 22.04
+ubuntu-docker ansible_host=127.0.0.1 ansible_port=2222 ansible_user=ansible
+
+[centos] 
+# Container Rocky Linux 8 (compatible CentOS)
+centos-docker ansible_host=127.0.0.1 ansible_port=2223 ansible_user=ansible
+
+# ======================================
+# MÉTA-GROUPES
+# ======================================
+
+[webservers:children]
+# Tous les serveurs web (Ubuntu + CentOS)
+ubuntu
+centos
+
+[docker:children]
+# Tous les containers Docker
+ubuntu
+centos
+
+# ======================================
+# VARIABLES COMMUNES
+# ======================================
+
+[all:vars]
+# Configuration SSH pour containers Docker
+ansible_ssh_pass=ansible123
+ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR'
+ansible_become_pass=ansible123
+
+# Variables pour tests
+test_environment=docker
+deployment_method=container
+
+# ======================================
+# VARIABLES PAR DISTRIBUTION
+# ======================================
+
+[ubuntu:vars]
+# Variables spécifiques Ubuntu
+ansible_python_interpreter=/usr/bin/python3
+package_manager=apt
+web_service=apache2
+web_user=www-data
+web_config_dir=/etc/apache2
+
+[centos:vars] 
+# Variables spécifiques CentOS/Rocky
+ansible_python_interpreter=/usr/bin/python3
+package_manager=dnf
+web_service=httpd
+web_user=apache
+web_config_dir=/etc/httpd
+
+# ======================================
+# NOTES IMPORTANTES
+# ======================================
+
+# 1. Connexion SSH:
+#    - Port 2222 → Ubuntu container
+#    - Port 2223 → CentOS container
+#    - Utilisateur: ansible / Mot de passe: ansible123
+
+# 2. Test de connectivité:
+#    ansible -i inventory-docker all -m ping
+
+# 3. Commandes utiles:
+#    ansible -i inventory-docker ubuntu -m setup
+#    ansible -i inventory-docker centos -m setup  
+#    ansible-playbook -i inventory-docker site.yml
+
+# 4. Debug SSH:
+#    ssh ansible@127.0.0.1 -p 2222  # Ubuntu
+#    ssh ansible@127.0.0.1 -p 2223  # CentOS

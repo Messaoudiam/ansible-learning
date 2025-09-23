@@ -1,0 +1,93 @@
+---
+# Version simplifiée du playbook pour tests sans sudo
+# Utilise un serveur HTTP simple en Python au lieu d'Apache
+
+- name: "Test local sans privilèges sudo"
+  hosts: localhost
+  connection: local
+  gather_facts: true
+  become: false  # Pas de sudo nécessaire
+  
+  vars:
+    web_port: 8080
+    web_dir: "{{ playbook_dir }}/web"
+    
+  tasks:
+    - name: "Afficher les informations de base"
+      debug:
+        msg: |
+          === TEST LOCAL ANSIBLE ===
+          Serveur: {{ inventory_hostname }}
+          Système: {{ ansible_os_family }}
+          Port web: {{ web_port }}
+          Répertoire: {{ web_dir }}
+    
+    - name: "Créer le répertoire web"
+      file:
+        path: "{{ web_dir }}"
+        state: directory
+        mode: '0755'
+    
+    - name: "Générer une page HTML de test"
+      copy:
+        dest: "{{ web_dir }}/index.html"
+        content: |
+          <!DOCTYPE html>
+          <html>
+          <head>
+              <title>Test Ansible Local</title>
+              <style>
+                  body { font-family: Arial; margin: 40px; background: #f0f0f0; }
+                  .container { background: white; padding: 30px; border-radius: 10px; }
+                  .success { color: #2ecc71; font-weight: bold; }
+                  .info { background: #ecf0f1; padding: 15px; margin: 20px 0; border-radius: 5px; }
+              </style>
+          </head>
+          <body>
+              <div class="container">
+                  <h1>🎉 {{ message_personnel | default('Test Ansible Réussi !') }}</h1>
+                  <p class="success">✅ Créé par {{ mon_nom | default('Utilisateur') }} - {{ ma_societe | default('Organisation') }}</p>
+                  
+                  <div class="info">
+                      <h3>Informations du système:</h3>
+                      <p><strong>Hostname:</strong> {{ inventory_hostname }}</p>
+                      <p><strong>OS:</strong> {{ ansible_os_family }} {{ ansible_distribution | default('') }}</p>
+                      <p><strong>Architecture:</strong> {{ ansible_architecture }}</p>
+                      <p><strong>Python:</strong> {{ ansible_python_version }}</p>
+                      <p><strong>Date:</strong> {{ ansible_date_time.date }} {{ ansible_date_time.time }}</p>
+                  </div>
+                  
+                  <h3>🚀 Prochaines étapes:</h3>
+                  <ul>
+                      <li>Installer Apache/Nginx pour tester le playbook complet</li>
+                      <li>Configurer l'accès sudo sans mot de passe</li>
+                      <li>Tester sur des serveurs distants</li>
+                  </ul>
+                  
+                  <p><small>Généré par Ansible le {{ ansible_date_time.iso8601 }}</small></p>
+              </div>
+          </body>
+          </html>
+        mode: '0644'
+    
+    - name: "Vérifier si Python3 est disponible"
+      command: python3 --version
+      register: python_version
+      changed_when: false
+    
+    - name: "Afficher la version Python"
+      debug:
+        msg: "Python disponible: {{ python_version.stdout }}"
+    
+    - name: "Instructions pour démarrer le serveur web"
+      debug:
+        msg: |
+          === SERVEUR WEB DE TEST ===
+          
+          Pour démarrer un serveur web simple:
+          cd {{ web_dir }}
+          python3 -m http.server {{ web_port }}
+          
+          Puis visitez: http://localhost:{{ web_port }}
+          
+          Pour arrêter: Ctrl+C

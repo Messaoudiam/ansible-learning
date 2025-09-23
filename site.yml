@@ -1,0 +1,155 @@
+---
+# Playbook principal - site.yml
+# Ce fichier est le point d'entrée principal pour orchestrer le déploiement
+# Il applique les rôles aux groupes de serveurs appropriés
+
+# === PLAYBOOK POUR LES SERVEURS WEB ===
+- name: "Configuration et déploiement des serveurs web"
+  # 'hosts' définit quels serveurs seront ciblés par ce playbook
+  # Ici on cible le groupe 'webservers' défini dans l'inventaire
+  hosts: webservers
+  
+  # 'become' permet d'exécuter les tâches avec des privilèges élevés (sudo)
+  # Nécessaire pour installer des packages et modifier la configuration système
+  become: true
+  
+  # 'gather_facts' collecte des informations sur les serveurs cibles
+  # Ces informations (hostname, OS, IP, etc.) sont utilisables dans les templates
+  gather_facts: true
+  
+  # Variables spécifiques à ce playbook
+  # Ces variables peuvent surcharger celles définies dans group_vars/
+  vars:
+    # Message personnalisé pour ce déploiement
+    deployment_message: "Déploiement effectué par Ansible - Projet d'apprentissage"
+    
+    # Horodatage du déploiement
+    deployment_timestamp: "{{ ansible_date_time.iso8601 }}"
+  
+  # Tâches à exécuter AVANT l'application des rôles
+  # Utile pour la préparation ou la vérification des prérequis
+  pre_tasks:
+    - name: "Afficher un message de début de déploiement"
+      debug:
+        msg: |
+          === DÉBUT DU DÉPLOIEMENT ===
+          Serveur cible: {{ inventory_hostname }}
+          Adresse IP: {{ ansible_default_ipv4.address | default('N/A') }}
+          Système: {{ ansible_os_family }} {{ ansible_distribution_version | default('') }}
+          Heure: {{ deployment_timestamp }}
+          Message: {{ deployment_message }}
+      # 'tags' permettent d'exécuter seulement certaines tâches
+      # Exemple: ansible-playbook site.yml --tags "info"
+      tags: [info, always]
+    
+    - name: "Vérifier la connectivité réseau"
+      ping:
+      tags: [info, connectivity]
+    
+    - name: "Mettre à jour le cache des packages (Debian/Ubuntu)"
+      apt:
+        update_cache: true
+        cache_valid_time: 3600  # Cache valide pendant 1 heure
+      when: ansible_os_family == "Debian"
+      tags: [system, packages]
+    
+    - name: "Mettre à jour le cache des packages (RedHat/CentOS)"
+      yum:
+        update_cache: true
+      when: ansible_os_family == "RedHat"
+      tags: [system, packages]
+  
+  # Liste des rôles à appliquer
+  # Les rôles encapsulent la logique de configuration pour des composants spécifiques
+  roles:
+    # Application du rôle webserver
+    # Ce rôle va installer et configurer le serveur web
+    - role: webserver
+      # Variables spécifiques à ce rôle (optionnel)
+      vars:
+        # Port personnalisé pour ce déploiement
+        webserver_port: "{{ default_http_port }}"
+        # Activer ou non HTTPS
+        webserver_ssl_enabled: false
+      # Tags pour ce rôle
+      tags: [webserver, web, apache]
+  
+  # Tâches à exécuter APRÈS l'application des rôles
+  # Utile pour la vérification, les tests ou le nettoyage
+  post_tasks:
+    - name: "Vérifier que le service web est démarré"
+      service:
+        name: "{{ webserver_service_name | default('apache2') }}"
+        state: started
+      tags: [verification, service]
+    
+    - name: "Tester la connectivité HTTP du serveur web"
+      uri:
+        url: "http://{{ ansible_default_ipv4.address | default('localhost') }}:{{ webserver_port | default(80) }}"
+        method: GET
+        status_code: 200
+      register: web_test
+      ignore_errors: true
+      tags: [verification, http]
+    
+    - name: "Afficher le résultat du test HTTP"
+      debug:
+        msg: |
+          {% if web_test.status == 200 %}
+          ✅ Le serveur web répond correctement sur le port {{ webserver_port | default(80) }}
+          {% else %}
+          ❌ Problème avec le serveur web: {{ web_test.msg | default('Erreur inconnue') }}
+          {% endif %}
+      tags: [verification, info]
+    
+    - name: "Afficher un message de fin de déploiement"
+      debug:
+        msg: |
+          === FIN DU DÉPLOIEMENT ===
+          Serveur: {{ inventory_hostname }}
+          Statut: {% if web_test.status == 200 %}SUCCÈS{% else %}ÉCHEC{% endif %}
+          
+          Pour tester manuellement:
+          curl http://{{ ansible_default_ipv4.address | default('localhost') }}:{{ webserver_port | default(80) }}
+      tags: [info, always]
+
+# === PLAYBOOK POUR LES BASES DE DONNÉES (EXEMPLE) ===
+# Décommentez cette section quand vous voudrez ajouter des serveurs de base de données
+# - name: "Configuration des serveurs de base de données"
+#   hosts: databases
+#   become: true
+#   gather_facts: true
+#   
+#   roles:
+#     - role: database
+#       tags: [database, mysql]
+
+# === EXPLICATION DES CONCEPTS CLÉS ===
+#
+# 1. PLAYBOOKS:
+#    - Fichiers YAML qui décrivent l'état désiré de vos serveurs
+#    - Peuvent contenir plusieurs "plays" (sections avec hosts)
+#
+# 2. HOSTS:
+#    - Définit quels serveurs sont ciblés (groupes ou serveurs individuels)
+#    - Correspond aux groupes/serveurs de votre inventaire
+#
+# 3. BECOME:
+#    - Élévation de privilèges (équivalent à sudo)
+#    - Nécessaire pour les tâches d'administration système
+#
+# 4. GATHER_FACTS:
+#    - Collecte automatique d'informations sur les serveurs
+#    - Ces "facts" sont utilisables comme variables (ansible_hostname, etc.)
+#
+# 5. VARIABLES:
+#    - Hiérarchie: ligne de commande > vars playbook > group_vars > defaults
+#    - Permettent la réutilisabilité et la personnalisation
+#
+# 6. TAGS:
+#    - Permettent l'exécution sélective de tâches
+#    - Exemple: ansible-playbook site.yml --tags "webserver"
+#
+# 7. PRE_TASKS / POST_TASKS:
+#    - Tâches exécutées avant/après les rôles
+#    - Utiles pour la préparation et la vérification

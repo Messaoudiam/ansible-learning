@@ -1,0 +1,150 @@
+---
+# Handlers pour le rôle webserver
+# Les handlers sont des tâches spéciales qui ne s'exécutent que lorsqu'elles sont "notifiées"
+# Ils sont utilisés pour des actions comme redémarrer des services après des changements de configuration
+
+# === QU'EST-CE QU'UN HANDLER ? ===
+# Un handler est une tâche qui :
+# 1. Ne s'exécute que si elle est explicitement appelée avec "notify"
+# 2. S'exécute SEULEMENT à la fin de toutes les tâches du play
+# 3. S'exécute UNE SEULE FOIS, même si notifiée plusieurs fois
+# 4. Est idéal pour les redémarrages de services après des changements
+
+# === HANDLERS POUR LE SERVICE WEB ===
+
+- name: restart webserver
+  # Redémarre complètement le service web
+  # Utilisé quand des changements majeurs nécessitent un redémarrage complet
+  service:
+    name: "{{ webserver_service_name }}"
+    state: restarted
+  # Attend que le service soit complètement redémarré avant de continuer
+  register: restart_result
+  
+  # Optionnel : afficher un message après le redémarrage
+  # Décommentez les lignes suivantes si vous voulez voir le résultat
+  # notify: display restart status
+
+- name: reload webserver
+  # Recharge la configuration sans redémarrer complètement le service
+  # Plus rapide qu'un restart, préservé les connexions actives
+  service:
+    name: "{{ webserver_service_name }}"
+    state: reloaded
+  # Ignore les erreurs si le service ne supporte pas le reload
+  ignore_errors: true
+
+- name: restart webserver with validation
+  # Handler avancé qui redémarre ET valide que le service fonctionne
+  block:
+    - name: "Redémarrer le service web"
+      service:
+        name: "{{ webserver_service_name }}"
+        state: restarted
+    
+    - name: "Attendre que le service soit prêt"
+      wait_for:
+        port: "{{ webserver_port }}"
+        host: "127.0.0.1"
+        delay: 2
+        timeout: 30
+    
+    - name: "Vérifier que le service répond"
+      uri:
+        url: "http://127.0.0.1:{{ webserver_port }}"
+        method: GET
+        status_code: 200
+      retries: 3
+      delay: 5
+
+# === HANDLERS POUR LA CONFIGURATION ===
+
+- name: validate webserver config
+  # Valide la configuration avant de l'appliquer
+  # Évite de casser le service avec une mauvaise configuration
+  command: "{{ webserver_service_name }} -t"
+  # Alternative pour différentes distributions
+  # command: "{% if ansible_os_family == 'Debian' %}apache2ctl configtest{% else %}httpd -t{% endif %}"
+  register: config_test
+  failed_when: config_test.rc != 0
+  changed_when: false  # Cette commande ne change jamais l'état du système
+
+- name: backup old config
+  # Sauvegarde la configuration actuelle avant de la modifier
+  copy:
+    src: "{{ webserver_config_dir }}/apache2.conf"
+    dest: "{{ webserver_config_dir }}/apache2.conf.backup.{{ ansible_date_time.epoch }}"
+    remote_src: true
+  when: ansible_os_family == "Debian"
+  ignore_errors: true
+
+# === HANDLERS DE NETTOYAGE ===
+
+- name: clear apache cache
+  # Vide le cache d'Apache si nécessaire
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /var/cache/apache2/mod_cache_disk
+    - /var/cache/httpd
+  ignore_errors: true
+
+- name: flush logs
+  # Force l'écriture des logs en attente
+  command: "logrotate -f /etc/logrotate.d/{{ webserver_service_name }}"
+  ignore_errors: true
+  changed_when: false
+
+# === HANDLERS DE MONITORING ===
+
+- name: display restart status
+  # Handler informatif pour afficher le statut après redémarrage
+  debug:
+    msg: |
+      === SERVICE WEB REDÉMARRÉ ===
+      Service: {{ webserver_service_name }}
+      Port: {{ webserver_port }}
+      Statut: {% if restart_result.state == 'started' %}✅ Démarré{% else %}❌ Problème{% endif %}
+      
+      Test de connectivité:
+      curl http://{{ ansible_default_ipv4.address | default('localhost') }}:{{ webserver_port }}
+
+# === HANDLERS CONDITIONNELS ===
+
+- name: restart webserver if config changed
+  # Handler qui ne s'exécute que si la configuration a vraiment changé
+  service:
+    name: "{{ webserver_service_name }}"
+    state: restarted
+  when: webserver_config_changed | default(false)
+
+# === EXPLICATIONS SUR L'UTILISATION DES HANDLERS ===
+#
+# COMMENT UTILISER CES HANDLERS DANS VOS TÂCHES :
+#
+# - name: "Modifier la configuration Apache"
+#   template:
+#     src: apache.conf.j2
+#     dest: /etc/apache2/apache2.conf
+#   notify:
+#     - validate webserver config  # Valide d'abord
+#     - reload webserver           # Puis recharge
+#
+# - name: "Installer un nouveau module"
+#   package:
+#     name: libapache2-mod-rewrite
+#     state: present
+#   notify: restart webserver      # Redémarre complètement
+#
+# BONNES PRATIQUES :
+# 
+# 1. Utilisez "reload" plutôt que "restart" quand c'est possible
+# 2. Validez toujours la configuration avant de l'appliquer
+# 3. Groupez les handlers logiquement (config, service, nettoyage)
+# 4. Utilisez des handlers descriptifs plutôt que génériques
+# 5. Gérez les erreurs avec rescue/block si nécessaire
+#
+# ORDRE D'EXÉCUTION :
+# Les handlers s'exécutent dans l'ordre où ils sont notifiés,
+# pas dans l'ordre où ils sont définis dans ce fichier.

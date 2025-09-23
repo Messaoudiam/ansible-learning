@@ -1,0 +1,173 @@
+---
+# Playbook spécialement adapté pour les containers Docker
+# Utilise docker exec au lieu de SSH pour simplicité pédagogique
+
+- name: "Test Ansible sur Containers Docker - Ubuntu"
+  hosts: ubuntu-docker
+  connection: local
+  gather_facts: false
+  become: false
+  
+  vars:
+    container_name: "ansible-ubuntu"
+    os_type: "ubuntu"
+    
+  tasks:
+    - name: "Collecter les informations système Ubuntu"
+      shell: |
+        docker exec {{ container_name }} bash -c "
+        echo 'HOSTNAME:' $(hostname)
+        echo 'OS:' $(cat /etc/os-release | grep PRETTY_NAME | cut -d'=' -f2 | tr -d '\"')
+        echo 'ARCH:' $(uname -m)
+        echo 'PYTHON:' $(python3 --version 2>/dev/null || echo 'Non installé')
+        echo 'MEMORY:' $(cat /proc/meminfo | grep MemTotal | awk '{print $2}') KB
+        "
+      register: ubuntu_facts
+      
+    - name: "Afficher les informations Ubuntu"
+      debug:
+        msg: |
+          === INFORMATIONS UBUNTU CONTAINER ===
+          {{ ubuntu_facts.stdout }}
+    
+    - name: "Installer Apache sur Ubuntu"
+      shell: |
+        docker exec {{ container_name }} bash -c "
+        export DEBIAN_FRONTEND=noninteractive &&
+        apt update -y &&
+        apt install -y apache2 &&
+        echo 'Apache installé sur Ubuntu'
+        "
+      register: ubuntu_install
+      
+    - name: "Créer page web Ubuntu"
+      shell: |
+        docker exec {{ container_name }} bash -c "
+        echo '<h1>🐧 Serveur Ubuntu configuré par Ansible</h1>
+        <p>Distribution: Ubuntu 22.04</p>
+        <p>Serveur Web: Apache2</p>
+        <p>Date: $(date)</p>
+        <p>Hostname: $(hostname)</p>' > /var/www/html/index.html &&
+        echo 'Page web créée'
+        "
+        
+    - name: "Démarrer Apache Ubuntu"
+      shell: |
+        docker exec {{ container_name }} bash -c "
+        service apache2 start &&
+        echo 'Apache démarré sur Ubuntu'
+        "
+
+- name: "Test Ansible sur Containers Docker - CentOS/Rocky"
+  hosts: centos-docker
+  connection: local
+  gather_facts: false
+  become: false
+  
+  vars:
+    container_name: "ansible-centos"
+    os_type: "centos"
+    
+  tasks:
+    - name: "Collecter les informations système CentOS"
+      shell: |
+        docker exec {{ container_name }} bash -c "
+        echo 'HOSTNAME:' $(hostname)
+        echo 'OS:' $(cat /etc/os-release | grep PRETTY_NAME | cut -d'=' -f2 | tr -d '\"')
+        echo 'ARCH:' $(uname -m)
+        echo 'PYTHON:' $(python3 --version 2>/dev/null || echo 'Non installé')
+        echo 'MEMORY:' $(cat /proc/meminfo | grep MemTotal | awk '{print $2}') KB
+        "
+      register: centos_facts
+      
+    - name: "Afficher les informations CentOS"
+      debug:
+        msg: |
+          === INFORMATIONS CENTOS/ROCKY CONTAINER ===
+          {{ centos_facts.stdout }}
+    
+    - name: "Installer Apache sur CentOS"
+      shell: |
+        docker exec {{ container_name }} bash -c "
+        dnf install -y httpd &&
+        echo 'Apache (httpd) installé sur CentOS'
+        "
+      register: centos_install
+      
+    - name: "Créer page web CentOS"
+      shell: |
+        docker exec {{ container_name }} bash -c "
+        echo '<h1>🔴 Serveur CentOS/Rocky configuré par Ansible</h1>
+        <p>Distribution: Rocky Linux 8</p>
+        <p>Serveur Web: Apache httpd</p>
+        <p>Date: $(date)</p>
+        <p>Hostname: $(hostname)</p>' > /var/www/html/index.html &&
+        echo 'Page web créée'
+        "
+        
+    - name: "Démarrer Apache CentOS"
+      shell: |
+        docker exec {{ container_name }} bash -c "
+        /usr/sbin/httpd -D FOREGROUND &
+        echo 'Apache (httpd) démarré sur CentOS'
+        "
+
+- name: "Comparaison et Validation Multi-OS"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  
+  tasks:
+    - name: "Vérifier les serveurs web"
+      shell: |
+        echo "=== VÉRIFICATION DES SERVEURS WEB ==="
+        echo "Ubuntu Apache:"
+        docker exec ansible-ubuntu bash -c "ps aux | grep apache2 | grep -v grep || echo 'Apache2 non démarré'"
+        echo ""
+        echo "CentOS httpd:"
+        docker exec ansible-centos bash -c "ps aux | grep httpd | grep -v grep || echo 'httpd non démarré'"
+      register: web_status
+      
+    - name: "Afficher le statut des serveurs"
+      debug:
+        msg: |
+          {{ web_status.stdout }}
+          
+          === RÉSUMÉ ===
+          ✅ Deux containers créés et configurés
+          ✅ Ubuntu: Apache2 installé 
+          ✅ CentOS: httpd installé
+          ✅ Pages web personnalisées créées
+          
+          === COMMANDES UTILES ===
+          Voir les containers: docker ps
+          Ubuntu shell: docker exec -it ansible-ubuntu bash
+          CentOS shell: docker exec -it ansible-centos bash
+          
+          === DIFFÉRENCES OBSERVÉES ===
+          Ubuntu → Package: apache2, Service: apache2
+          CentOS → Package: httpd, Service: httpd
+    
+    - name: "Afficher les leçons apprises"
+      debug:
+        msg: |
+          🎓 LEÇONS ANSIBLE MULTI-OS APPRISES:
+          
+          1. MÊME PLAYBOOK = RÉSULTATS DIFFÉRENTS
+             - Ubuntu utilise 'apache2'
+             - CentOS utilise 'httpd'
+             - Ansible gère ces différences automatiquement
+          
+          2. FACTS ANSIBLE ESSENTIELS
+             - ansible_os_family détecte 'Debian' vs 'RedHat'
+             - Permet l'adaptation automatique du code
+          
+          3. PORTABILITÉ DU CODE
+             - Un playbook peut cibler plusieurs OS
+             - Variables conditionnelles s'adaptent
+             - Tests sur containers = validation rapide
+          
+          4. AVANTAGE CONTAINERS POUR APPRENDRE
+             - Tests rapides sans vrais serveurs
+             - Environnements reproductibles
+             - Nettoyage facile: docker rm -f ansible-ubuntu ansible-centos

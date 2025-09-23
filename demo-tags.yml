@@ -1,0 +1,37 @@
+---
+# Démonstration des tags Ansible
+- name: "Apprentissage des Tags"
+  hosts: localhost
+  connection: local
+  gather_facts: true
+  
+  tasks:
+    - name: "Étape 1: Préparation"
+      debug:
+        msg: "🔧 Préparation du système..."
+      tags: [preparation, setup]
+    
+    - name: "Étape 2: Installation"
+      debug:
+        msg: "📦 Installation des packages..."
+      tags: [install, packages]
+    
+    - name: "Étape 3: Configuration"
+      debug:
+        msg: "⚙️ Configuration des services..."
+      tags: [config, configuration]
+    
+    - name: "Étape 4: Tests"
+      debug:
+        msg: "🧪 Exécution des tests..."
+      tags: [test, validation]
+    
+    - name: "Étape 5: Nettoyage"
+      debug:
+        msg: "🧹 Nettoyage temporaire..."
+      tags: [cleanup, never]  # 'never' = ne s'exécute jamais sauf si explicitement demandé
+    
+    - name: "Information système"
+      debug:
+        msg: "💻 Système: {{ ansible_os_family }}"
+      tags: [always]  # 'always' = s'exécute toujours
