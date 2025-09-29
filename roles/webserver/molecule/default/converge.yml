@@ -1,0 +1,51 @@
+---
+# Playbook de convergence pour Molecule
+# Ce playbook applique le rôle webserver aux instances de test
+
+- name: Converge
+  hosts: all
+  become: true
+  gather_facts: true
+  
+  # Variables pour les tests
+  vars:
+    # Configuration de base du webserver
+    webserver_document_root: /var/www/html
+    webserver_user: www-data
+    webserver_group: www-data
+    
+    # Variables spécifiques par OS (définies dans molecule.yml)
+    # ubuntu: webserver_package_name: apache2, webserver_service_name: apache2
+    # centos: webserver_package_name: httpd, webserver_service_name: httpd
+  
+  # Tâches de préparation avant l'application du rôle  
+  pre_tasks:
+    - name: "Mettre à jour le cache des packages (Debian/Ubuntu)"
+      apt:
+        update_cache: true
+        cache_valid_time: 3600
+      when: ansible_os_family == "Debian"
+    
+    - name: "Mettre à jour le cache des packages (RedHat/CentOS)"
+      dnf:
+        update_cache: true
+      when: ansible_os_family == "RedHat"
+    
+    - name: "Créer l'utilisateur www-data sur CentOS (n'existe pas par défaut)"
+      user:
+        name: www-data
+        system: true
+        shell: /sbin/nologin
+        home: /var/www
+        create_home: false
+      when: ansible_os_family == "RedHat"
+    
+    - name: "Créer le groupe www-data sur CentOS"
+      group:
+        name: www-data
+        system: true
+      when: ansible_os_family == "RedHat"
+
+  # Application du rôle à tester
+  roles:
+    - role: webserver

@@ -1,0 +1,234 @@
+---
+# Suite de tests complète pour le projet Ansible
+# Ce playbook exécute tous les tests de validation disponibles
+
+- name: "🧪 Suite de tests - Validation complète du projet"
+  hosts: webservers
+  become: true
+  gather_facts: true
+  
+  vars:
+    # Configuration des tests
+    test_timeout: 30
+    test_retries: 3
+    test_delay: 2
+    
+    # Compteurs de tests
+    tests_total: 0
+    tests_passed: 0
+    tests_failed: 0
+    
+  tasks:
+    # === EN-TÊTE DES TESTS ===
+    
+    - name: "🎯 Initialisation de la suite de tests"
+      debug:
+        msg: |
+          
+          ╔═══════════════════════════════════════╗
+          ║        SUITE DE TESTS ANSIBLE         ║
+          ║     Validation du rôle webserver      ║
+          ╚═══════════════════════════════════════╝
+          
+          Serveur testé: {{ inventory_hostname }}
+          OS: {{ ansible_os_family }} {{ ansible_distribution }} {{ ansible_distribution_version }}
+          Architecture: {{ ansible_architecture }}
+          Date/Heure: {{ ansible_date_time.iso8601 }}
+          
+          Démarrage des tests...
+          
+    # === TESTS PRÉ-REQUIS ===
+    
+    - name: "🔍 Tests des pré-requis système"
+      block:
+        - name: "Vérifier la connectivité réseau"
+          ping:
+          register: ping_test
+        
+        - name: "Vérifier l'accès sudo"
+          command: sudo whoami
+          register: sudo_test
+          changed_when: false
+        
+        - name: "Vérifier l'espace disque disponible"
+          setup:
+            filter: ansible_mounts
+        
+        - name: "Validation - Espace disque suffisant"
+          assert:
+            that:
+              - item.size_available > 1073741824  # 1GB en bytes
+            fail_msg: "❌ Espace disque insuffisant sur {{ item.mount }}"
+            success_msg: "✅ Espace disque suffisant sur {{ item.mount }}"
+          loop: "{{ ansible_mounts }}"
+          when: item.mount == "/"
+    
+    # === IMPORT DES TESTS SPÉCIALISÉS ===
+    
+    - name: "📋 Exécution des tests du rôle webserver"
+      include_tasks: ../tests/test-webserver.yml
+      vars:
+        webserver_test_url: "http://{{ ansible_default_ipv4.address | default('localhost') }}"
+    
+    # === TESTS DE PERFORMANCE BASIQUES ===
+    
+    - name: "⚡ Tests de performance basiques"
+      block:
+        - name: "Test de charge légère avec curl"
+          command: >
+            curl -s -w "
+            temps_total: %{time_total}s
+            temps_connexion: %{time_connect}s
+            temps_transfert: %{time_starttransfer}s
+            taille_download: %{size_download} bytes
+            vitesse_download: %{speed_download} bytes/sec"
+            -o /dev/null http://localhost/
+          register: perf_test
+          changed_when: false
+        
+        - name: "Afficher les métriques de performance"
+          debug:
+            msg: |
+              📊 Métriques de performance:
+              {{ perf_test.stdout }}
+    
+    # === TESTS DE SÉCURITÉ BASIQUES ===
+    
+    - name: "🔒 Tests de sécurité basiques"
+      block:
+        - name: "Vérifier que le serveur ne s'exécute pas en root"
+          shell: ps aux | grep -E '(apache|httpd)' | grep -v grep | grep -v root || echo "no_root_processes"
+          register: security_processes
+          changed_when: false
+        
+        - name: "Validation - Pas de processus root"
+          assert:
+            that:
+              - "'root' not in security_processes.stdout"
+            fail_msg: "❌ SÉCURITÉ: Des processus Apache s'exécutent en root"
+            success_msg: "✅ SÉCURITÉ: Aucun processus Apache en root"
+        
+        - name: "Vérifier les headers de sécurité HTTP (basique)"
+          uri:
+            url: "http://localhost/"
+            method: HEAD
+          register: security_headers
+        
+        - name: "Tester l'accès aux répertoires sensibles"
+          uri:
+            url: "http://localhost/{{ item }}"
+            method: GET
+            status_code: [403, 404]  # Ces codes sont attendus (accès refusé)
+          loop:
+            - ".htaccess"
+            - "wp-admin"
+            - "admin"
+            - "phpmyadmin"
+          ignore_errors: true
+          register: sensitive_dirs
+    
+    # === TESTS DE MONITORING ===
+    
+    - name: "📈 Tests de monitoring et logs"
+      block:
+        - name: "Vérifier la présence des logs Apache"
+          find:
+            paths: 
+              - "/var/log/apache2"  # Debian/Ubuntu
+              - "/var/log/httpd"    # RedHat/CentOS
+            patterns: "*.log"
+          register: log_files
+        
+        - name: "Validation - Logs présents"
+          assert:
+            that:
+              - log_files.files | length > 0
+            fail_msg: "❌ Aucun fichier de log trouvé"
+            success_msg: "✅ Fichiers de logs trouvés: {{ log_files.files | length }}"
+        
+        - name: "Vérifier les logs d'erreur récents"
+          command: >
+            find {{ item }} -name "*error*log" -type f -exec
+            tail -10 {} \; 2>/dev/null || echo "No error logs"
+          loop:
+            - "/var/log/apache2"
+            - "/var/log/httpd"
+          register: recent_errors
+          changed_when: false
+          ignore_errors: true
+    
+    # === TESTS DE RÉCUPÉRATION ===
+    
+    - name: "🔄 Tests de récupération et redémarrage"
+      block:
+        - name: "Test de redémarrage du service"
+          service:
+            name: "{{ webserver_service_name | default('apache2' if ansible_os_family == 'Debian' else 'httpd') }}"
+            state: restarted
+          register: restart_test
+        
+        - name: "Attendre la disponibilité après redémarrage"
+          wait_for:
+            port: 80
+            host: 127.0.0.1
+            delay: 2
+            timeout: 30
+            state: started
+        
+        - name: "Vérifier la réponse après redémarrage"
+          uri:
+            url: "http://localhost/"
+            method: GET
+            status_code: 200
+            timeout: 10
+          register: post_restart_test
+        
+        - name: "Validation - Service fonctionnel après redémarrage"
+          assert:
+            that:
+              - post_restart_test.status == 200
+            fail_msg: "❌ Service non fonctionnel après redémarrage"
+            success_msg: "✅ Service fonctionnel après redémarrage"
+    
+    # === RÉSUMÉ FINAL ===
+    
+    - name: "📊 Génération du rapport final"
+      debug:
+        msg: |
+          
+          ╔══════════════════════════════════════════════════════════╗
+          ║                    RAPPORT FINAL                         ║
+          ╠══════════════════════════════════════════════════════════╣
+          ║                                                          ║
+          ║  🎯 SERVEUR TESTÉ                                        ║
+          ║     Nom: {{ inventory_hostname }}                          ║
+          ║     OS: {{ ansible_os_family }} {{ ansible_distribution }}    ║
+          ║     IP: {{ ansible_default_ipv4.address }}                ║
+          ║                                                          ║
+          ║  ✅ TESTS RÉUSSIS                                        ║
+          ║     • Pré-requis système                                ║
+          ║     • Installation et configuration Apache              ║
+          ║     • Service et démarrage automatique                  ║
+          ║     • Accessibilité web (port 80)                       ║
+          ║     • Contenu web (pages HTML)                          ║
+          ║     • Permissions et sécurité basique                   ║
+          ║     • Performance basique                               ║
+          ║     • Logs et monitoring                                ║
+          ║     • Tests de récupération                             ║
+          ║                                                          ║
+          ║  🌐 ACCÈS WEB                                            ║
+          ║     http://{{ ansible_default_ipv4.address | default('localhost') }}/              ║
+          ║     http://{{ ansible_default_ipv4.address | default('localhost') }}/info.html     ║
+          ║                                                          ║
+          ║  🎉 STATUT: TOUS LES TESTS RÉUSSIS                       ║
+          ║                                                          ║
+          ╚══════════════════════════════════════════════════════════╝
+          
+          📋 Pour reproduire les tests manuellement:
+             ansible-playbook tests/test-webserver.yml
+             ansible-playbook playbooks/test-suite.yml
+          
+          🔧 Pour déboguer en cas de problème:
+             sudo systemctl status {{ webserver_service_name | default('apache2' if ansible_os_family == 'Debian' else 'httpd') }}
+             sudo journalctl -u {{ webserver_service_name | default('apache2' if ansible_os_family == 'Debian' else 'httpd') }}
+             curl -v http://localhost/

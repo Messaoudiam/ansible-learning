@@ -1,0 +1,215 @@
+---
+# Playbook de test pour le rôle webserver
+# Alternative simple à Molecule pour l'apprentissage - tests Ansible natifs
+
+- name: "Tests de validation du rôle webserver"
+  hosts: localhost
+  become: true
+  gather_facts: true
+  
+  # Variables pour les tests
+  vars:
+    test_results: []
+    webserver_test_url: "http://localhost"
+    expected_response_code: 200
+    
+  tasks:
+    # === PRÉPARATION DES TESTS ===
+    
+    - name: "🧪 Début des tests du rôle webserver"
+      debug:
+        msg: |
+          === TESTS DU RÔLE WEBSERVER ===
+          Serveur testé: {{ inventory_hostname }}
+          OS: {{ ansible_os_family }} {{ ansible_distribution }}
+          URL de test: {{ webserver_test_url }}
+          ================================
+    
+    # === TEST 1: PACKAGE APACHE ===
+    
+    - name: "Test 1: Vérifier que le package Apache est installé"
+      package_facts:
+        manager: auto
+    
+    - name: "Test 1: Validation - Package Apache (Debian/Ubuntu)"
+      assert:
+        that:
+          - "'apache2' in ansible_facts.packages"
+        fail_msg: "❌ ÉCHEC: Le package apache2 n'est pas installé"
+        success_msg: "✅ SUCCÈS: Le package apache2 est installé"
+      when: ansible_os_family == "Debian"
+      register: test1_debian
+    
+    - name: "Test 1: Validation - Package Apache (RedHat/CentOS)"
+      assert:
+        that:
+          - "'httpd' in ansible_facts.packages"
+        fail_msg: "❌ ÉCHEC: Le package httpd n'est pas installé"
+        success_msg: "✅ SUCCÈS: Le package httpd est installé"
+      when: ansible_os_family == "RedHat"
+      register: test1_redhat
+    
+    # === TEST 2: SERVICE APACHE ===
+    
+    - name: "Test 2: Vérifier l'état du service Apache"
+      service_facts:
+    
+    - name: "Test 2: Validation - Service Apache (Debian/Ubuntu)"
+      assert:
+        that:
+          - "ansible_facts.services['apache2.service'] is defined"
+          - "ansible_facts.services['apache2.service'].state == 'running'"
+          - "ansible_facts.services['apache2.service'].status == 'enabled'"
+        fail_msg: "❌ ÉCHEC: Le service apache2 n'est pas démarré/activé"
+        success_msg: "✅ SUCCÈS: Le service apache2 est démarré et activé"
+      when: ansible_os_family == "Debian"
+      register: test2_debian
+    
+    - name: "Test 2: Validation - Service Apache (RedHat/CentOS)"
+      assert:
+        that:
+          - "ansible_facts.services['httpd.service'] is defined"
+          - "ansible_facts.services['httpd.service'].state == 'running'"
+          - "ansible_facts.services['httpd.service'].status == 'enabled'"
+        fail_msg: "❌ ÉCHEC: Le service httpd n'est pas démarré/activé"
+        success_msg: "✅ SUCCÈS: Le service httpd est démarré et activé"
+      when: ansible_os_family == "RedHat"
+      register: test2_redhat
+    
+    # === TEST 3: PORT EN ÉCOUTE ===
+    
+    - name: "Test 3: Vérifier que le port 80 est en écoute"
+      wait_for:
+        port: 80
+        host: 127.0.0.1
+        delay: 1
+        timeout: 10
+        state: started
+      register: test3_port
+      
+    - name: "Test 3: Validation - Port 80 en écoute"
+      assert:
+        that:
+          - test3_port is succeeded
+        fail_msg: "❌ ÉCHEC: Le port 80 n'est pas en écoute"
+        success_msg: "✅ SUCCÈS: Le port 80 est en écoute"
+    
+    # === TEST 4: FICHIERS WEB ===
+    
+    - name: "Test 4: Vérifier l'existence des fichiers web"
+      stat:
+        path: "{{ item.path }}"
+      loop:
+        - { path: "/var/www/html", type: "directory" }
+        - { path: "/var/www/html/index.html", type: "file" }
+        - { path: "/var/www/html/info.html", type: "file" }
+      register: test4_files
+    
+    - name: "Test 4: Validation - Fichiers web"
+      assert:
+        that:
+          - item.stat.exists
+          - (item.item.type == "directory" and item.stat.isdir) or (item.item.type == "file" and item.stat.isreg)
+        fail_msg: "❌ ÉCHEC: {{ item.item.path }} manquant ou type incorrect"
+        success_msg: "✅ SUCCÈS: {{ item.item.path }} existe"
+      loop: "{{ test4_files.results }}"
+    
+    # === TEST 5: CONTENU HTML ===
+    
+    - name: "Test 5: Vérifier le contenu du fichier index.html"
+      slurp:
+        src: /var/www/html/index.html
+      register: index_content
+    
+    - name: "Test 5: Validation - Contenu HTML"
+      assert:
+        that:
+          - "'<!DOCTYPE html>' in (index_content.content | b64decode)"
+          - "'<html' in (index_content.content | b64decode)"
+          - "('Apache' in (index_content.content | b64decode)) or ('Serveur Web' in (index_content.content | b64decode))"
+        fail_msg: "❌ ÉCHEC: Le contenu HTML d'index.html n'est pas valide"
+        success_msg: "✅ SUCCÈS: Le fichier index.html contient du HTML valide"
+    
+    # === TEST 6: RÉPONSE HTTP ===
+    
+    - name: "Test 6: Tester la réponse HTTP du serveur"
+      uri:
+        url: "{{ webserver_test_url }}"
+        method: GET
+        status_code: "{{ expected_response_code }}"
+        timeout: 10
+      register: test6_http
+      ignore_errors: true
+    
+    - name: "Test 6: Validation - Réponse HTTP"
+      assert:
+        that:
+          - test6_http.status == expected_response_code
+        fail_msg: "❌ ÉCHEC: Le serveur ne répond pas correctement (code: {{ test6_http.status | default('N/A') }})"
+        success_msg: "✅ SUCCÈS: Le serveur répond avec le code {{ expected_response_code }}"
+      when: test6_http is defined
+    
+    # === TEST 7: PAGE INFO ===
+    
+    - name: "Test 7: Tester la page info.html"
+      uri:
+        url: "{{ webserver_test_url }}/info.html"
+        method: GET
+        status_code: 200
+        timeout: 10
+      register: test7_info
+      ignore_errors: true
+    
+    - name: "Test 7: Validation - Page info.html"
+      assert:
+        that:
+          - test7_info.status == 200
+        fail_msg: "❌ ÉCHEC: La page info.html n'est pas accessible"
+        success_msg: "✅ SUCCÈS: La page info.html est accessible"
+      when: test7_info is defined
+    
+    # === TEST 8: SÉCURITÉ BASIQUE ===
+    
+    - name: "Test 8: Vérifier les permissions des fichiers web"
+      stat:
+        path: "{{ item }}"
+      loop:
+        - "/var/www/html/index.html"
+        - "/var/www/html/info.html"
+      register: test8_permissions
+    
+    - name: "Test 8: Validation - Permissions des fichiers"
+      assert:
+        that:
+          - item.stat.mode == "0644"
+        fail_msg: "❌ ÉCHEC: {{ item.item }} n'a pas les bonnes permissions ({{ item.stat.mode }})"
+        success_msg: "✅ SUCCÈS: {{ item.item }} a les bonnes permissions (644)"
+      loop: "{{ test8_permissions.results }}"
+    
+    # === RÉSUMÉ DES TESTS ===
+    
+    - name: "📊 Résumé des tests"
+      debug:
+        msg: |
+          
+          ========================================
+          📊 RÉSUMÉ DES TESTS DU RÔLE WEBSERVER
+          ========================================
+          
+          ✅ Test 1: Package Apache installé
+          ✅ Test 2: Service Apache démarré/activé
+          ✅ Test 3: Port 80 en écoute
+          ✅ Test 4: Fichiers web présents
+          ✅ Test 5: Contenu HTML valide
+          ✅ Test 6: Réponse HTTP correcte
+          ✅ Test 7: Page info.html accessible
+          ✅ Test 8: Permissions correctes
+          
+          🎉 TOUS LES TESTS ONT RÉUSSI !
+          
+          Pour tester manuellement:
+          • curl {{ webserver_test_url }}
+          • curl {{ webserver_test_url }}/info.html
+          • Navigateur: {{ webserver_test_url }}
+          
+          ========================================

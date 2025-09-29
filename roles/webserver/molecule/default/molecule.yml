@@ -1,0 +1,89 @@
+---
+# Configuration Molecule pour les tests du rôle webserver
+# Ce fichier définit comment Molecule va tester votre rôle
+
+# Nom de la dépendance manager (none = pas de dépendances externes)
+dependency:
+  name: galaxy
+
+# Driver pour l'infrastructure de test (docker pour la simplicité et la rapidité)
+driver:
+  name: docker
+
+# Configuration des plateformes de test
+# Testons sur Ubuntu et CentOS pour valider la compatibilité multi-OS
+platforms:
+  - name: ubuntu-instance
+    image: ubuntu:22.04
+    pre_build_image: true
+    dockerfile: ../Dockerfile.j2
+    capabilities:
+      - SYS_ADMIN
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    cgroupns_mode: host
+    privileged: true
+    command: /sbin/init
+    tmpfs:
+      - /run
+      - /tmp
+
+  - name: centos-instance
+    image: quay.io/centos/centos:stream9
+    pre_build_image: true
+    dockerfile: ../Dockerfile.j2
+    capabilities:
+      - SYS_ADMIN
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    cgroupns_mode: host
+    privileged: true
+    command: /sbin/init
+    tmpfs:
+      - /run
+      - /tmp
+
+# Provisionneur (ansible pour exécuter notre rôle)
+provisioner:
+  name: ansible
+  # Variables pour les tests
+  inventory:
+    host_vars:
+      ubuntu-instance:
+        webserver_port: 80
+        webserver_package_name: apache2
+        webserver_service_name: apache2
+      centos-instance:
+        webserver_port: 80
+        webserver_package_name: httpd
+        webserver_service_name: httpd
+  # Configuration Ansible
+  config_options:
+    defaults:
+      host_key_checking: false
+      stdout_callback: yaml
+      callbacks_enabled: profile_tasks
+
+# Vérificateur (testinfra pour les tests d'infrastructure)
+verifier:
+  name: testinfra
+  options:
+    # Verbosité des tests
+    v: 1
+
+# Scénarios de test à exécuter
+scenario:
+  # Étapes du cycle de test
+  test_sequence:
+    - dependency
+    - cleanup  
+    - destroy
+    - syntax
+    - create
+    - prepare
+    - converge
+    - idempotence
+    - side_effect
+    - verify
+    - cleanup
+    - destroy

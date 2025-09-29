@@ -1,0 +1,190 @@
+---
+# Tests pour la configuration locale (sans sudo)
+# Alternative simple pour tester sans Apache complet
+
+- name: "Tests de validation - Configuration locale"
+  hosts: localhost
+  gather_facts: true
+  
+  vars:
+    web_directory: "{{ playbook_dir | dirname }}/playbooks/web"
+    test_port: 8080
+    
+  tasks:
+    # === PRÉPARATION DES TESTS ===
+    
+    - name: "🧪 Début des tests de la configuration locale"
+      debug:
+        msg: |
+          === TESTS CONFIGURATION LOCALE ===
+          Répertoire web: {{ web_directory }}
+          Port de test: {{ test_port }}
+          Serveur: {{ inventory_hostname }}
+          ===================================
+    
+    # === TEST 1: FICHIERS WEB ===
+    
+    - name: "Test 1: Vérifier l'existence du répertoire web"
+      stat:
+        path: "{{ web_directory }}"
+      register: web_dir_test
+    
+    - name: "Test 1: Validation - Répertoire web"
+      assert:
+        that:
+          - web_dir_test.stat.exists
+          - web_dir_test.stat.isdir
+        fail_msg: "❌ ÉCHEC: Le répertoire web n'existe pas"
+        success_msg: "✅ SUCCÈS: Le répertoire web existe"
+    
+    - name: "Test 2: Vérifier le fichier index.html"
+      stat:
+        path: "{{ web_directory }}/index.html"
+      register: index_test
+    
+    - name: "Test 2: Validation - Fichier index.html"
+      assert:
+        that:
+          - index_test.stat.exists
+          - index_test.stat.isreg
+        fail_msg: "❌ ÉCHEC: Le fichier index.html n'existe pas"
+        success_msg: "✅ SUCCÈS: Le fichier index.html existe"
+    
+    # === TEST 3: CONTENU HTML ===
+    
+    - name: "Test 3: Vérifier le contenu HTML"
+      slurp:
+        src: "{{ web_directory }}/index.html"
+      register: html_content
+    
+    - name: "Test 3: Validation - Contenu HTML"
+      assert:
+        that:
+          - "'<!DOCTYPE html>' in (html_content.content | b64decode)"
+          - "'<html' in (html_content.content | b64decode)"
+          - "('Ansible' in (html_content.content | b64decode)) or ('Test Local' in (html_content.content | b64decode))"
+        fail_msg: "❌ ÉCHEC: Le contenu HTML n'est pas valide"
+        success_msg: "✅ SUCCÈS: Le contenu HTML est valide"
+    
+    # === TEST 4: PYTHON DISPONIBLE ===
+    
+    - name: "Test 4: Vérifier que Python3 est disponible"
+      command: python3 --version
+      register: python_test
+      changed_when: false
+    
+    - name: "Test 4: Validation - Python3"
+      assert:
+        that:
+          - python_test.rc == 0
+          - "'Python 3' in python_test.stdout"
+        fail_msg: "❌ ÉCHEC: Python3 n'est pas disponible"
+        success_msg: "✅ SUCCÈS: Python3 est disponible ({{ python_test.stdout.strip() }})"
+    
+    # === TEST 5: SERVEUR WEB DE TEST ===
+    
+    - name: "Test 5: Démarrer le serveur web temporaire"
+      shell: |
+        cd {{ web_directory }}
+        python3 -m http.server {{ test_port }} &
+        echo $! > server.pid
+        sleep 3
+      register: server_start
+      changed_when: false
+    
+    - name: "Test 5: Vérifier que le port est en écoute"
+      wait_for:
+        port: "{{ test_port }}"
+        host: 127.0.0.1
+        delay: 1
+        timeout: 10
+        state: started
+      register: port_test
+    
+    - name: "Test 5: Validation - Port en écoute"
+      assert:
+        that:
+          - port_test is succeeded
+        fail_msg: "❌ ÉCHEC: Le port {{ test_port }} n'est pas en écoute"
+        success_msg: "✅ SUCCÈS: Le port {{ test_port }} est en écoute"
+    
+    # === TEST 6: RÉPONSE HTTP ===
+    
+    - name: "Test 6: Tester la réponse HTTP"
+      uri:
+        url: "http://127.0.0.1:{{ test_port }}/"
+        method: GET
+        status_code: 200
+        timeout: 10
+      register: http_test
+      ignore_errors: true
+    
+    - name: "Test 6: Validation - Réponse HTTP"
+      assert:
+        that:
+          - http_test.status == 200
+        fail_msg: "❌ ÉCHEC: Le serveur ne répond pas correctement"
+        success_msg: "✅ SUCCÈS: Le serveur répond avec le code 200"
+      when: http_test is defined
+    
+    # === TEST 7: CONTENU WEB ACCESSIBLE ===
+    
+    - name: "Test 7: Vérifier le contenu web accessible"
+      uri:
+        url: "http://127.0.0.1:{{ test_port }}/"
+        method: GET
+        return_content: true
+      register: content_test
+      when: http_test.status == 200
+    
+    - name: "Test 7: Validation - Contenu accessible"
+      assert:
+        that:
+          - "'html' in content_test.content"
+          - "('Ansible' in content_test.content) or ('Test' in content_test.content)"
+        fail_msg: "❌ ÉCHEC: Le contenu web n'est pas correct"
+        success_msg: "✅ SUCCÈS: Le contenu web est accessible et correct"
+      when: content_test is defined and content_test.content is defined
+    
+    # === NETTOYAGE ===
+    
+    - name: "Arrêter le serveur web temporaire"
+      shell: |
+        cd {{ web_directory }}
+        if [ -f server.pid ]; then
+          kill $(cat server.pid) 2>/dev/null || true
+          rm -f server.pid
+        fi
+        # Alternative: tuer tous les serveurs Python sur ce port
+        lsof -ti:{{ test_port }} | xargs kill -9 2>/dev/null || true
+      register: cleanup
+      changed_when: false
+      ignore_errors: true
+    
+    # === RÉSUMÉ DES TESTS ===
+    
+    - name: "📊 Résumé des tests locaux"
+      debug:
+        msg: |
+          
+          =========================================
+          📊 RÉSUMÉ DES TESTS - CONFIGURATION LOCALE
+          =========================================
+          
+          ✅ Test 1: Répertoire web présent
+          ✅ Test 2: Fichier index.html créé
+          ✅ Test 3: Contenu HTML valide
+          ✅ Test 4: Python3 disponible
+          ✅ Test 5: Port {{ test_port }} accessible
+          ✅ Test 6: Réponse HTTP 200
+          ✅ Test 7: Contenu web accessible
+          
+          🎉 TOUS LES TESTS LOCAUX ONT RÉUSSI !
+          
+          Pour démarrer manuellement le serveur:
+          cd {{ web_directory }}
+          python3 -m http.server {{ test_port }}
+          
+          Puis visitez: http://localhost:{{ test_port }}
+          
+          =========================================
