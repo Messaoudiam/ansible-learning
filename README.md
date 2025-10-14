@@ -58,34 +58,67 @@ ansible --version
 
 ```
 ansible-learning/
-├── ansible.cfg          # Configuration Ansible
-├── inventory            # Liste des serveurs cibles
-├── site.yml            # Playbook principal
-├── group_vars/         
-│   └── all.yml         # Variables globales
-└── roles/
-    └── webserver/      # Rôle pour serveur web
-        ├── tasks/
-        │   └── main.yml       # Tâches principales
-        ├── handlers/
-        │   └── main.yml       # Handlers (redémarrages)
-        ├── templates/
-        │   └── index.html.j2  # Template de page web
-        └── defaults/
-            └── main.yml       # Variables par défaut
+├── ansible.cfg                    # Configuration Ansible
+├── README.md                      # Ce fichier - documentation principale
+├── CLAUDE.md                      # Instructions pour Claude Code
+├── inventories/                   # Inventaires multi-environnements
+│   ├── production                 # Serveurs de production (localhost)
+│   ├── staging                    # Serveurs de staging
+│   └── docker                     # Conteneurs Docker pour tests
+├── playbooks/                     # Playbooks organisés
+│   ├── site.yml                   # Playbook principal (point d'entrée)
+│   ├── site-local.yml             # Version sans sudo pour tests locaux
+│   ├── site-docker.yml            # Déploiement sur conteneurs Docker
+│   ├── demo-tags.yml              # Démonstration des tags Ansible
+│   ├── docker-test.yml            # Tests avec Docker
+│   └── test-suite.yml             # Suite de tests complète
+├── group_vars/                    # Variables par groupe
+│   ├── all.yml                    # Variables globales
+│   └── webservers.yml             # Variables spécifiques aux serveurs web
+├── roles/                         # Rôles réutilisables
+│   └── webserver/                 # Rôle de serveur web Apache
+│       ├── tasks/
+│       │   └── main.yml           # Tâches principales
+│       ├── handlers/
+│       │   └── main.yml           # Handlers (redémarrages)
+│       ├── templates/
+│       │   └── index.html.j2      # Template de page web Jinja2
+│       ├── defaults/
+│       │   └── main.yml           # Variables par défaut
+│       └── molecule/              # Tests Molecule (Docker)
+│           ├── default/
+│           │   ├── molecule.yml   # Configuration Molecule
+│           │   └── converge.yml   # Scénario de test
+│           └── Dockerfile.j2      # Template pour conteneurs de test
+├── tests/                         # Tests Ansible natifs
+│   ├── test-webserver.yml         # Tests du rôle webserver complet
+│   └── test-webserver-local.yml   # Tests locaux sans sudo
+└── docs/                          # Documentation complémentaire
+    ├── QUICKSTART.md              # Démarrage rapide
+    ├── GUIDE-TESTS.md             # Guide des tests
+    ├── LECON-2-DOCKER-MULTI-OS.md # Leçon sur Docker et multi-OS
+    ├── MACOS-VS-LINUX.md          # Différences macOS/Linux
+    └── RECAPITULATIF-COMPLET.md   # Récapitulatif complet du projet
 ```
 
 ### Explication de la structure
 
 **📄 `ansible.cfg`** : Configure Ansible pour l'apprentissage (désactive la vérification SSH, etc.)
 
-**📄 `inventory`** : Définit les serveurs sur lesquels travailler
+**📁 `inventories/`** : Différents inventaires pour production, staging et tests Docker
 
-**📄 `site.yml`** : Point d'entrée principal - orchestre tout le déploiement
+**📁 `playbooks/`** : Playbooks organisés par usage (principal, tests, démonstrations)
+- `site.yml` : Point d'entrée principal - orchestre tout le déploiement
 
 **📁 `group_vars/`** : Variables qui s'appliquent à des groupes de serveurs
+- `all.yml` : Variables pour tous les serveurs
+- `webservers.yml` : Variables spécifiques au groupe webservers
 
 **📁 `roles/`** : Logique réutilisable organisée par composants
+
+**📁 `tests/`** : Tests Ansible natifs (recommandés pour l'apprentissage)
+
+**📁 `docs/`** : Documentation complémentaire et guides détaillés
 
 ## 🚀 Premiers pas
 
@@ -115,20 +148,42 @@ ansible all -m ping
 ### 3. Exécution du playbook
 
 ```bash
-# Exécution complète
-ansible-playbook site.yml
+# Exécution complète (nécessite sudo)
+ansible-playbook playbooks/site.yml
+
+# Version locale sans sudo (recommandée pour débuter)
+ansible-playbook playbooks/site-local.yml
 
 # Exécution avec plus de détails
-ansible-playbook site.yml -v
+ansible-playbook playbooks/site.yml -v
 
 # Exécution pas-à-pas (demande confirmation)
-ansible-playbook site.yml --step
+ansible-playbook playbooks/site.yml --step
 
 # Test sans modification (dry-run)
-ansible-playbook site.yml --check
+ansible-playbook playbooks/site.yml --check
+
+# Démonstration des tags
+ansible-playbook playbooks/demo-tags.yml
 ```
 
-### 4. Vérification du résultat
+### 4. Exécution des tests
+
+```bash
+# Tests locaux sans sudo (recommandé pour débuter)
+ansible-playbook tests/test-webserver-local.yml
+
+# Tests complets du webserver (nécessite Apache installé)
+ansible-playbook tests/test-webserver.yml
+
+# Suite de tests complète (performance, sécurité)
+ansible-playbook playbooks/test-suite.yml
+
+# Tests Molecule avec Docker (avancé)
+cd roles/webserver && molecule test
+```
+
+### 5. Vérification du résultat
 
 ```bash
 # Tester le serveur web
@@ -207,10 +262,10 @@ Les **tags** permettent l'exécution sélective :
 
 ```bash
 # Exécuter seulement les tâches avec le tag \"install\"
-ansible-playbook site.yml --tags \"install\"
+ansible-playbook playbooks/site.yml --tags \"install\"
 
 # Ignorer les tâches avec le tag \"slow\"
-ansible-playbook site.yml --skip-tags \"slow\"
+ansible-playbook playbooks/site.yml --skip-tags \"slow\"
 ```
 
 ## 🛠️ Commandes utiles
@@ -228,20 +283,20 @@ ansible all -m ping
 ansible all -m command -a \"uptime\"
 
 # Vérifier la syntaxe d'un playbook
-ansible-playbook site.yml --syntax-check
+ansible-playbook playbooks/site.yml --syntax-check
 
 # Voir quels serveurs seraient affectés
-ansible-playbook site.yml --list-hosts
+ansible-playbook playbooks/site.yml --list-hosts
 ```
 
 ### Commandes de débogage
 
 ```bash
 # Mode verbeux (plusieurs niveaux possibles)
-ansible-playbook site.yml -v     # Basic
-ansible-playbook site.yml -vv    # More
-ansible-playbook site.yml -vvv   # Debug
-ansible-playbook site.yml -vvvv  # Connection debug
+ansible-playbook playbooks/site.yml -v     # Basic
+ansible-playbook playbooks/site.yml -vv    # More
+ansible-playbook playbooks/site.yml -vvv   # Debug
+ansible-playbook playbooks/site.yml -vvvv  # Connection debug
 
 # Voir toutes les variables d'un serveur
 ansible localhost -m setup
@@ -254,16 +309,16 @@ ansible localhost -m setup -a \"filter=ansible_default_ipv4\"
 
 ```bash
 # Exécuter seulement certaines tâches
-ansible-playbook site.yml --tags \"webserver,config\"
+ansible-playbook playbooks/site.yml --tags \"webserver,config\"
 
 # Cibler un serveur spécifique
-ansible-playbook site.yml --limit \"localhost\"
+ansible-playbook playbooks/site.yml --limit \"localhost\"
 
 # Commencer à partir d'une tâche spécifique
-ansible-playbook site.yml --start-at-task=\"Démarrer le service web\"
+ansible-playbook playbooks/site.yml --start-at-task=\"Démarrer le service web\"
 
 # Mode différentiel (voir les changements)
-ansible-playbook site.yml --diff
+ansible-playbook playbooks/site.yml --diff
 ```
 
 ## 🔍 Dépannage
@@ -302,16 +357,16 @@ sudo netstat -tlnp | grep :80
 
 ```bash
 # 1. Vérifier la syntaxe
-ansible-playbook site.yml --syntax-check
+ansible-playbook playbooks/site.yml --syntax-check
 
 # 2. Voir ce qui serait fait sans le faire
-ansible-playbook site.yml --check
+ansible-playbook playbooks/site.yml --check
 
 # 3. Exécuter avec des détails
-ansible-playbook site.yml -vv
+ansible-playbook playbooks/site.yml -vv
 
 # 4. Exécuter étape par étape
-ansible-playbook site.yml --step
+ansible-playbook playbooks/site.yml --step
 ```
 
 ### Logs et diagnostics
@@ -366,9 +421,19 @@ sudo apache2ctl configtest
 default_http_port: 8080
 
 # Ou en ligne de commande
-ansible-playbook site.yml -e \"webserver_port=8080\"
+ansible-playbook playbooks/site.yml -e \"webserver_port=8080\"
 ```
 </details>
+
+## 📖 Documentation complémentaire
+
+Ce projet contient une documentation exhaustive dans le répertoire `docs/` :
+
+- **[QUICKSTART.md](docs/QUICKSTART.md)** : Guide de démarrage rapide pour commencer immédiatement
+- **[GUIDE-TESTS.md](docs/GUIDE-TESTS.md)** : Guide complet sur les tests (natifs et Molecule)
+- **[LECON-2-DOCKER-MULTI-OS.md](docs/LECON-2-DOCKER-MULTI-OS.md)** : Leçon sur Docker et tests multi-OS
+- **[MACOS-VS-LINUX.md](docs/MACOS-VS-LINUX.md)** : Différences entre macOS et Linux pour Ansible
+- **[RECAPITULATIF-COMPLET.md](docs/RECAPITULATIF-COMPLET.md)** : Récapitulatif complet du projet
 
 ## 🚀 Prochaines étapes
 
